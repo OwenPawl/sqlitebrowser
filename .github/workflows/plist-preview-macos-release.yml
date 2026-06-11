@@ -1,0 +1,104 @@
+name: Plist Preview macOS Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to create or update
+        required: true
+        default: plist-preview-v0.1.0
+      prerelease:
+        description: Mark the GitHub release as a prerelease
+        type: boolean
+        required: true
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  macos-dmg:
+    name: macOS DMG
+    runs-on: macos-14
+    env:
+      MACOSX_DEPLOYMENT_TARGET: 10.13
+      APP_BUNDLE: DB Browser for SQLite Plist Preview.app
+      DMG_NAME: DB.Browser.for.SQLite.Plist.Preview-${{ inputs.tag }}-macOS-universal.dmg
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Uninstall Mono
+        run: |
+          sudo rm -rfv /Library/Frameworks/Mono.framework
+          sudo pkgutil --forget com.xamarin.mono-MDK.pkg || true
+          sudo rm -f /etc/paths.d/mono-commands
+
+      - name: Install dependencies
+        run: |
+          brew update
+          brew tap sqlitebrowser/tap
+          brew unlink openssl@3 || true
+          brew install sqlb-openssl@3 sqlb-qt@5 sqlb-sqlcipher sqlb-sqlite ninja
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+            -DcustomTap=1 \
+            -DENABLE_TESTING=ON \
+            -Dsqlcipher=1
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Run plist preview tests
+        run: ctest --test-dir build --output-on-failure -R test-plistpreview
+
+      - name: Prepare app bundle
+        run: |
+          mkdir -p dist
+          cp -R "build/DB Browser for SQLite.app" "dist/$APP_BUNDLE"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleName DB Browser for SQLite Plist Preview" "dist/$APP_BUNDLE/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName DB Browser for SQLite Plist Preview" "dist/$APP_BUNDLE/Contents/Info.plist" || \
+            /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string DB Browser for SQLite Plist Preview" "dist/$APP_BUNDLE/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier org.sqlitebrowser.sqlitebrowser.plistpreview" "dist/$APP_BUNDLE/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable DB Browser for SQLite" "dist/$APP_BUNDLE/Contents/Info.plist" || \
+            /usr/libexec/PlistBuddy -c "Add :CFBundleExecutable string DB Browser for SQLite" "dist/$APP_BUNDLE/Contents/Info.plist"
+          "$(brew --prefix sqlb-qt@5)/bin/macdeployqt" "dist/$APP_BUNDLE" \
+            -libpath="$(brew --prefix sqlb-sqlcipher)/lib" \
+            -libpath="$(brew --prefix sqlb-openssl@3)/lib" \
+            -always-overwrite
+          codesign --force --deep --sign - "dist/$APP_BUNDLE"
+          codesign --verify --deep --strict "dist/$APP_BUNDLE"
+
+      - name: Create DMG
+        run: |
+          hdiutil create \
+            -volname "DB Browser for SQLite Plist Preview" \
+            -srcfolder dist \
+            -ov \
+            -format UDZO \
+            "$DMG_NAME"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.DMG_NAME }}
+          path: ${{ env.DMG_NAME }}
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          name: Plist Preview v0.1.0
+          prerelease: ${{ inputs.prerelease }}
+          files: ${{ env.DMG_NAME }}
+          body: |
+            DB Browser for SQLite v3.13.1 with a macOS-only read-only XML preview for `bplist00` BLOB cells.
+
+            - Recursive nested bplist decoding is enabled by default when nested bplist data exists.
+            - The `Decode nested bplists` checkbox appears only for BLOBs that contain nested binary plists.
+            - Generated XML previews are read-only and are not written back to SQLite.
+            - This DMG is ad-hoc signed and not notarized.

@@ -73,3 +73,22 @@ set(TESTCACHE_HDR
 add_executable(test-cache ${TESTCACHE_HDR} ${TESTCACHE_SRC})
 target_link_libraries(test-cache Qt5::Test)
 add_test(test-cache test-cache)
+
+# test plist preview
+
+set(TESTPLISTPREVIEW_SRC
+    TestPlistPreview.cpp
+    ../PlistPreview.cpp
+)
+
+set(TESTPLISTPREVIEW_HDR
+    TestPlistPreview.h
+    ../PlistPreview.h
+)
+
+add_executable(test-plistpreview ${TESTPLISTPREVIEW_HDR} ${TESTPLISTPREVIEW_SRC})
+target_link_libraries(test-plistpreview Qt5::Test Qt5::Core)
+if(APPLE)
+    target_link_libraries(test-plistpreview "-framework CoreFoundation")
+endif()
+add_test(test-plistpreview test-plistpreview)

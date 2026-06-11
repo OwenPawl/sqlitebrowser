@@ -6,12 +6,15 @@
 #include "FileDialog.h"
 #include "Data.h"
 #include "ImageViewer.h"
+#include "PlistPreview.h"
 
 #include <QMainWindow>
 #include <QKeySequence>
 #include <QShortcut>
+#include <QCheckBox>
 #include <QImageReader>
 #include <QModelIndex>
+#include <QSignalBlocker>
 #include <QtXml/QDomDocument>
 #include <QMessageBox>
 #include <QPrinter>
@@ -31,9 +34,16 @@ EditDialog::EditDialog(QWidget* parent)
       m_currentIndex(QModelIndex()),
       dataSource(SciBuffer),
       dataType(Null),
-      isReadOnly(true)
+      isReadOnly(true),
+      checkDecodeNestedBplists(nullptr)
 {
     ui->setupUi(this);
+
+    checkDecodeNestedBplists = new QCheckBox(tr("Decode nested bplists"), this);
+    checkDecodeNestedBplists->setToolTip(tr("Decode binary plists stored inside plist data blobs"));
+    checkDecodeNestedBplists->setChecked(true);
+    checkDecodeNestedBplists->setVisible(false);
+    ui->horizontalLayout->insertWidget(3, checkDecodeNestedBplists);
 
     // Add Ctrl-Enter (Cmd-Enter on OSX) as a shortcut for the Apply button
     ui->buttonApply->setShortcut(QKeySequence(Qt::CTRL + Qt::Key_Return));
@@ -66,6 +76,15 @@ EditDialog::EditDialog(QWidget* parent)
     connect(sciEdit, &DockTextEdit::textChanged, this, &EditDialog::editTextChanged);
     connect(ui->qtEdit, &QTextEdit::textChanged, this, &EditDialog::updateApplyButton);
     connect(hexEdit, &QHexEdit::dataChanged, this, &EditDialog::updateApplyButton);
+    connect(checkDecodeNestedBplists, &QCheckBox::toggled, this, [this]() {
+        if (dataType != PropertyList || !m_currentIndex.isValid())
+            return;
+
+        QByteArray cellData = m_currentIndex.data(Qt::EditRole).toByteArray();
+        loadData(cellData);
+        updateCellInfoAndMode(cellData);
+        setModified(false);
+    });
 
     // Create shortcuts for the widgets that doesn't have its own print action or printing mechanism.
     QShortcut* shortcutPrint = new QShortcut(QKeySequence::Print, this, nullptr, nullptr, Qt::WidgetShortcut);
@@ -141,6 +160,10 @@ void EditDialog::setCurrentIndex(const QModelIndex& idx)
     setDisabled(!idx.isValid());
 
     m_currentIndex = QPersistentModelIndex(idx);
+    {
+        QSignalBlocker blocker(checkDecodeNestedBplists);
+        checkDecodeNestedBplists->setChecked(true);
+    }
 
     QByteArray bArrData = idx.data(Qt::EditRole).toByteArray();
     loadData(bArrData);
@@ -192,6 +215,8 @@ void EditDialog::loadData(const QByteArray& bArrdata)
 
     // Clear previously removed BOM
     removedBom.clear();
+    propertyListPreview = PlistPreview::Result();
+    checkDecodeNestedBplists->setVisible(false);
 
     // Determine the data type, saving that info in the class variable
     dataType = checkDataType(bArrdata);
@@ -321,6 +346,10 @@ void EditDialog::loadData(const QByteArray& bArrdata)
             break;
         }
         break;
+    case PropertyList:
+        loadPropertyListPreview(bArrdata);
+        break;
+
     case SVG:
         // Set the XML data in any buffer or update image in image viewer mode
         switch (editMode) {
@@ -498,6 +527,9 @@ void EditDialog::exportData()
         break;
     case XML:
         filters << FILE_FILTER_XML;
+        break;
+    case PropertyList:
+        filters << tr("Binary property list files (*.bplist *.plist)");
         break;
     case Null:
         return;
@@ -971,8 +1003,51 @@ int EditDialog::checkDataType(const QByteArray& bArrdata) const
         }
     }
 
+    if (PlistPreview::render(cellData, false).valid)
+        return PropertyList;
+
     // It's none of the above, so treat it as general binary data
     return Binary;
+}
+
+void EditDialog::loadPropertyListPreview(const QByteArray& bArrdata)
+{
+    propertyListPreview = PlistPreview::render(bArrdata, checkDecodeNestedBplists->isChecked());
+    if (!propertyListPreview.valid)
+        return;
+
+    checkDecodeNestedBplists->setVisible(propertyListPreview.hasNestedBinaryPlists);
+
+    // Keep the original BLOB as the active data source. The XML text is a
+    // generated preview and must not be applied back to the database.
+    setDataInBuffer(bArrdata, HexBuffer);
+
+    switch (ui->comboMode->currentIndex()) {
+    case TextEditor:
+    case JsonEditor:
+    case XmlEditor:
+    case SqlEvaluator:
+        sciEdit->setLanguage(DockTextEdit::XML);
+        setDataInBuffer(propertyListPreview.xml, SciBuffer);
+        dataSource = HexBuffer;
+        sciEdit->setReadOnly(true);
+        ui->buttonApply->setEnabled(false);
+        break;
+
+    case RtlTextEditor:
+        ui->qtEdit->setPlainText(QString::fromUtf8(propertyListPreview.xml.constData(), propertyListPreview.xml.size()));
+        ui->qtEdit->setReadOnly(true);
+        ui->buttonApply->setEnabled(false);
+        break;
+
+    case HexEditor:
+        setDataInBuffer(bArrdata, HexBuffer);
+        break;
+
+    case ImageEditor:
+        imageEdit->resetImage();
+        break;
+    }
 }
 
 void EditDialog::toggleOverwriteMode()
@@ -1051,6 +1126,9 @@ void EditDialog::switchEditorMode(bool autoSwitchForType)
         case Binary:
             ui->comboMode->setCurrentIndex(HexEditor);
             break;
+        case PropertyList:
+            ui->comboMode->setCurrentIndex(XmlEditor);
+            break;
         case Null:
         case Text:
             ui->comboMode->setCurrentIndex(TextEditor);
@@ -1109,12 +1187,17 @@ void EditDialog::updateCellInfoAndMode(const QByteArray& bArrdata)
         break;
     }
     case XML:
+    case PropertyList:
     case Text:
     case RtlText: {
         // Text only
         // Determine the length of the cell text in characters (possibly different to number of bytes).
-        int textLength = QString(cellData).length();
-        ui->labelInfo->setText(tr("Type: Text / Numeric; Size: %n character(s)", "", textLength));
+        if (dataType == PropertyList) {
+            ui->labelInfo->setText(tr("Type: Binary Property List XML Preview; Original size: %n byte(s)", "", cellData.length()));
+        } else {
+            int textLength = QString(cellData).length();
+            ui->labelInfo->setText(tr("Type: Text / Numeric; Size: %n character(s)", "", textLength));
+        }
         break;
     }
     case JSON: {

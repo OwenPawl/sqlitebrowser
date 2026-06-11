@@ -3,7 +3,9 @@
 
 #include <QDialog>
 #include <QPersistentModelIndex>
+#include "PlistPreview.h"
 
+class QCheckBox;
 class QHexEdit;
 class DockTextEdit;
 class ImageViewer;
@@ -68,6 +70,8 @@ private:
     bool isReadOnly;
     bool mustIndentAndCompact;
     QByteArray removedBom;
+    QCheckBox* checkDecodeNestedBplists;
+    PlistPreview::Result propertyListPreview;
 
     enum DataSources {
         QtBuffer,
@@ -82,6 +86,7 @@ private:
         Null,
         Text,
         JSON,
+        PropertyList,
         SVG,
         XML,
         RtlText
@@ -103,6 +108,7 @@ private:
     };
 
     int checkDataType(const QByteArray& bArrdata) const;
+    void loadPropertyListPreview(const QByteArray& bArrdata);
     bool promptInvalidData(const QString& data_type, const QString& errorString);
     void setDataInBuffer(const QByteArray& bArrdata, DataSources source);
     void setStackCurrentIndex(int editMode);

@@ -187,6 +187,7 @@ target_sources(${PROJECT_NAME}
     src/AboutDialog.h
     src/EditIndexDialog.h
     src/EditDialog.h
+    src/PlistPreview.h
     src/EditTableDialog.h
     src/AddRecordDialog.h
     src/ExportDataDialog.h
@@ -241,6 +242,7 @@ target_sources(${PROJECT_NAME}
     src/AboutDialog.cpp
     src/EditIndexDialog.cpp
     src/EditDialog.cpp
+    src/PlistPreview.cpp
     src/EditTableDialog.cpp
     src/AddRecordDialog.cpp
     src/ExportDataDialog.cpp
@@ -494,6 +496,10 @@ target_link_libraries(${PROJECT_NAME}
     QCustomPlot::QCustomPlot
     QScintilla::QScintilla
 )
+
+if(APPLE)
+    target_link_libraries(${PROJECT_NAME} "-framework CoreFoundation")
+endif()
 
 if(MSVC)
     set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "DB Browser for SQLite")

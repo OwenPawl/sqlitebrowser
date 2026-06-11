@@ -16,6 +16,7 @@
 
 ## Table of Contents
 - [DB Browser for SQLite](#db-browser-for-sqlite)
+  - [Plist Preview Fork](#plist-preview-fork)
   - [Table of Contents](#table-of-contents)
   - [What it is](#what-it-is)
   - [What it is not](#what-it-is-not)
@@ -47,6 +48,39 @@
   - [History](#history)
   - [Contributors](#contributors)
   - [License](#license)
+
+## Plist Preview Fork
+
+This fork is based on upstream DB Browser for SQLite v3.13.1 and adds a
+macOS-only preview for Apple binary property list BLOBs.
+
+When a selected Browse Data cell contains a top-level `bplist00` BLOB, the Edit
+Database Cell panel automatically switches to XML mode and shows a human-readable
+property list preview. The preview is read-only: DB Browser keeps the original
+BLOB as the editable cell value and disables Apply while the generated XML
+preview is shown, so the generated XML cannot be written back to the SQLite
+database.
+
+Some Apple property lists store additional binary property lists inside `<data>`
+values. When the selected top-level plist contains one of those nested bplists,
+the panel shows a `Decode nested bplists` checkbox. It is enabled by default for
+each eligible selection. With recursive decoding enabled, nested binary plist
+data is rendered inline as:
+
+```xml
+<bplist>
+  ...decoded nested plist XML...
+</bplist>
+```
+
+Non-plist data values remain normal plist `<data>` blocks. Recursive decoding is
+capped at 16 levels; if the cap is reached or a nested value cannot be parsed, DB
+Browser falls back to the original `<data>` output for that value.
+
+Initial macOS binaries for this fork are ad-hoc signed and not notarized. macOS
+may require opening the app from Finder with Control-click > Open, or removing
+quarantine manually, unless Apple signing and notarization secrets are added to a
+future release pipeline.
 
 ## What it is
 
