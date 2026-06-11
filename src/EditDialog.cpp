@@ -43,7 +43,7 @@ EditDialog::EditDialog(QWidget* parent)
     checkDecodeNestedBplists->setToolTip(tr("Decode binary plists stored inside plist data blobs"));
     checkDecodeNestedBplists->setChecked(true);
     checkDecodeNestedBplists->setVisible(false);
-    ui->horizontalLayout->insertWidget(3, checkDecodeNestedBplists);
+    ui->verticalLayout_5->insertWidget(1, checkDecodeNestedBplists);
 
     // Add Ctrl-Enter (Cmd-Enter on OSX) as a shortcut for the Apply button
     ui->buttonApply->setShortcut(QKeySequence(Qt::CTRL + Qt::Key_Return));
@@ -846,6 +846,12 @@ void EditDialog::editModeChanged(int newMode)
     if (ui->comboMode->hasFocus())
         setFocus();
 
+    if (dataType == PropertyList && m_currentIndex.isValid()) {
+        loadData(m_currentIndex.data(Qt::EditRole).toByteArray());
+        setModified(false);
+        return;
+    }
+
     // * If the dataSource is the text buffer, the data is always text *
     switch (dataSource) {
     case QtBuffer:
@@ -1016,7 +1022,7 @@ void EditDialog::loadPropertyListPreview(const QByteArray& bArrdata)
     if (!propertyListPreview.valid)
         return;
 
-    checkDecodeNestedBplists->setVisible(propertyListPreview.hasNestedBinaryPlists);
+    checkDecodeNestedBplists->setVisible(propertyListPreview.hasNestedBinaryPlists && ui->comboMode->currentIndex() == XmlEditor);
 
     // Keep the original BLOB as the active data source. The XML text is a
     // generated preview and must not be applied back to the database.
