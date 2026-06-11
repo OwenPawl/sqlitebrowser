@@ -10,7 +10,9 @@ class TestPlistPreview : public QObject
 private slots:
     void topLevelBinaryPlistRendersXml();
     void nestedBinaryPlistCanBeDecoded();
+    void nestedBinaryPlistDoesNotWrapPlistDocument();
     void recursiveDecodeOffPreservesData();
+    void nsArchiveUidsRenderAsCfUidDictionaries();
     void invalidBlobIsNotPreviewable();
     void recursionDepthLimitFallsBackToData();
 };

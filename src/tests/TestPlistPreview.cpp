@@ -150,6 +150,20 @@ void TestPlistPreview::nestedBinaryPlistCanBeDecoded()
 #endif
 }
 
+void TestPlistPreview::nestedBinaryPlistDoesNotWrapPlistDocument()
+{
+#ifdef Q_OS_MACOS
+    QByteArray nested = plistWithStringValue("inner", "value");
+    PlistPreview::Result result = PlistPreview::render(plistWithDataValue("payload", nested), true);
+    QVERIFY(result.valid);
+    QVERIFY(result.hasNestedBinaryPlists);
+    QVERIFY(!result.xml.contains("<bplist>\n\t\t<plist version=\"1.0\">"));
+    QVERIFY(result.xml.contains("<bplist>\n\t\t\t<dict>"));
+#else
+    QSKIP("Binary plist preview is macOS-only");
+#endif
+}
+
 void TestPlistPreview::recursiveDecodeOffPreservesData()
 {
 #ifdef Q_OS_MACOS
@@ -159,6 +173,27 @@ void TestPlistPreview::recursiveDecodeOffPreservesData()
     QVERIFY(result.hasNestedBinaryPlists);
     QVERIFY(!result.xml.contains("<bplist>"));
     QVERIFY(result.xml.contains("<data>"));
+#else
+    QSKIP("Binary plist preview is macOS-only");
+#endif
+}
+
+void TestPlistPreview::nsArchiveUidsRenderAsCfUidDictionaries()
+{
+#ifdef Q_OS_MACOS
+    QByteArray archive = QByteArray::fromHex(
+        "62706c6973743030d401020304050613165924617263686976657258246f626a656374735424746f70582476657273696f6e"
+        "5f100f4e534b657965644172636869766572a307080d55246e756c6cd2090a0b0c5624636c617373546e616d6580025464"
+        "656d6fd20e0f10115824636c61737365735a24636c6173736e616d65a211125444656d6f584e534f626a656374d1141554"
+        "726f6f74800112000186a008111b24293244484e535a5f61666b747f82879093989a000000000000010100000000000000"
+        "170000000000000000000000000000009f");
+
+    PlistPreview::Result result = PlistPreview::render(archive, true);
+    QVERIFY(result.valid);
+    QVERIFY(result.xml.contains("<key>CF$UID</key>"));
+    QVERIFY(result.xml.contains("<integer>1</integer>"));
+    QVERIFY(result.xml.contains("<integer>2</integer>"));
+    QVERIFY(!result.xml.contains("Unsupported plist value"));
 #else
     QSKIP("Binary plist preview is macOS-only");
 #endif

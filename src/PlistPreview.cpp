@@ -210,6 +210,33 @@ void appendDocument(QString& out, CFTypeRef value, int depth, bool decodeNestedB
     out += indent(depth) + QLatin1String("</plist>\n");
 }
 
+bool appendStandardXmlValue(QString& out, CFTypeRef value, int depth)
+{
+    QString xml = QString::fromUtf8(standardXml(value));
+    if (xml.isEmpty())
+        return false;
+
+    const QString plistOpen = QLatin1String("<plist version=\"1.0\">");
+    const QString plistClose = QLatin1String("</plist>");
+    int valueStart = xml.indexOf(plistOpen);
+    int valueEnd = xml.lastIndexOf(plistClose);
+    if (valueStart < 0 || valueEnd < 0 || valueEnd <= valueStart)
+        return false;
+
+    valueStart += plistOpen.length();
+    QString valueXml = xml.mid(valueStart, valueEnd - valueStart).trimmed();
+    if (valueXml.isEmpty())
+        return false;
+
+    const QStringList lines = valueXml.split(QLatin1Char('\n'));
+    for (const QString& line : lines) {
+        out += indent(depth);
+        out += line;
+        out += QLatin1Char('\n');
+    }
+    return true;
+}
+
 void appendArray(QString& out, CFArrayRef array, int depth, bool decodeNestedBinaryPlists, int maximumDepth)
 {
     out += indent(depth) + QLatin1String("<array>\n");
@@ -271,7 +298,7 @@ void appendData(QString& out, CFDataRef data, int depth, bool decodeNestedBinary
     }
 
     out += indent(depth) + QLatin1String("<bplist>\n");
-    appendDocument(out, nested.get(), depth + 1, decodeNestedBinaryPlists, maximumDepth);
+    appendValue(out, nested.get(), depth + 1, decodeNestedBinaryPlists, maximumDepth);
     out += indent(depth) + QLatin1String("</bplist>\n");
 }
 
@@ -320,6 +347,8 @@ void appendValue(QString& out, CFTypeRef value, int depth, bool decodeNestedBina
     } else if (type == CFDateGetTypeID()) {
         appendDate(out, static_cast<CFDateRef>(value), depth);
     } else {
+        if (appendStandardXmlValue(out, value, depth))
+            return;
         out += indent(depth) + QLatin1String("<string>Unsupported plist value</string>\n");
     }
 }
